@@ -5,6 +5,9 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"path/filepath"
+	"regexp"
+	"strings"
 	"sync"
 
 	"github.com/yuin/goldmark"
@@ -31,8 +34,15 @@ var bufferPool = sync.Pool{
 
 // Converter handles markdown to HTML conversion with streaming output
 type Converter struct {
-	md goldmark.Markdown
+	md      goldmark.Markdown
+	baseDir string // Base directory for resolving relative paths
 }
+
+// Regex patterns for finding src and href attributes with relative paths
+var (
+	srcPattern  = regexp.MustCompile(`(src=["'])([^"']+)(["'])`)
+	hrefPattern = regexp.MustCompile(`(href=["'])([^"']+)(["'])`)
+)
 
 // New creates a new Converter instance
 func New() *Converter {
@@ -52,6 +62,12 @@ func New() *Converter {
 	)
 
 	return &Converter{md: md}
+}
+
+// SetBaseDir sets the base directory for resolving relative paths in the output.
+// Relative paths in src and href attributes will be converted to absolute file:// URLs.
+func (c *Converter) SetBaseDir(dir string) {
+	c.baseDir = dir
 }
 
 // Convert reads markdown from the reader and writes HTML to the writer.
@@ -85,9 +101,9 @@ func (c *Converter) ConvertWithSize(reader io.Reader, writer io.Writer, template
 		return fmt.Errorf("failed to read markdown: %w", err)
 	}
 
-	// Convert and stream directly to writer
-	// goldmark.Convert writes to the io.Writer as it generates HTML
-	convertErr := c.md.Convert(source, bufWriter)
+	// Convert markdown to HTML - buffer the output so we can rewrite paths
+	var htmlBuf bytes.Buffer
+	convertErr := c.md.Convert(source, &htmlBuf)
 
 	// Release source buffer back to pool immediately after conversion
 	// This allows GC to reclaim memory before we finish writing
@@ -95,6 +111,17 @@ func (c *Converter) ConvertWithSize(reader io.Reader, writer io.Writer, template
 
 	if convertErr != nil {
 		return fmt.Errorf("failed to convert markdown: %w", convertErr)
+	}
+
+	// Rewrite relative paths to absolute file:// URLs if baseDir is set
+	htmlContent := htmlBuf.String()
+	if c.baseDir != "" {
+		htmlContent = c.rewritePaths(htmlContent)
+	}
+
+	// Write the processed HTML content
+	if _, err := io.WriteString(bufWriter, htmlContent); err != nil {
+		return err
 	}
 
 	// Write HTML footer
@@ -147,6 +174,45 @@ func (c *Converter) releaseBuffer(source []byte) {
 		buf := bytes.NewBuffer(source[:0])
 		bufferPool.Put(buf)
 	}
+}
+
+// rewritePaths converts relative paths in src and href attributes to absolute file:// URLs
+func (c *Converter) rewritePaths(html string) string {
+	rewriter := func(pattern *regexp.Regexp, content string) string {
+		return pattern.ReplaceAllStringFunc(content, func(match string) string {
+			submatches := pattern.FindStringSubmatch(match)
+			if len(submatches) != 4 {
+				return match
+			}
+
+			prefix := submatches[1] // src=" or href="
+			path := submatches[2]   // the path value
+			suffix := submatches[3] // closing quote
+
+			// Skip if already absolute (http://, https://, file://, data:, #, mailto:, etc.)
+			if strings.Contains(path, "://") ||
+				strings.HasPrefix(path, "#") ||
+				strings.HasPrefix(path, "data:") ||
+				strings.HasPrefix(path, "mailto:") ||
+				strings.HasPrefix(path, "tel:") {
+				return match
+			}
+
+			// Resolve relative path against base directory
+			absPath := filepath.Join(c.baseDir, path)
+			absPath = filepath.Clean(absPath)
+
+			// Convert to file:// URL format
+			// Windows paths need to be converted: C:\path\file -> file:///C:/path/file
+			fileURL := "file:///" + strings.ReplaceAll(absPath, "\\", "/")
+
+			return prefix + fileURL + suffix
+		})
+	}
+
+	html = rewriter(srcPattern, html)
+	html = rewriter(hrefPattern, html)
+	return html
 }
 
 // writeHeader writes the HTML document header with embedded template content

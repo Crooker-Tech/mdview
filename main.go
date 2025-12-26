@@ -147,6 +147,7 @@ func run(inputPath, outputPath, templateName string, openBrowser bool) error {
 
 	// Create converter and perform conversion with size hint
 	conv := converter.New()
+	conv.SetBaseDir(filepath.Dir(absInputPath))
 	if err := conv.ConvertWithSize(inputFile, outputFile, templateName, fileSize); err != nil {
 		// Clean up partial output file on error
 		outputFile.Close()
