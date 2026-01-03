@@ -33,6 +33,12 @@ mdview --template minimal document.md
 # List available templates
 mdview --list-templates
 
+# Create self-contained HTML with embedded images/fonts
+mdview --self-contained document.md output.html
+
+# Self-contained with parallel image preloading (11-22% faster for multiple images)
+mdview --self-contained --preload document.md
+
 # Register/unregister as default .md handler
 mdview --register
 mdview --unregister
@@ -47,6 +53,8 @@ mdview --version
 |------|-------------|
 | `--template <name>` | Template name to use for styling (default: "default") |
 | `--no-browser` | Don't open browser after conversion |
+| `--self-contained` | Embed images/fonts as base64 data URIs (portable HTML) |
+| `--preload` | Preload all images in a directory asynchronously (use with --self-contained) |
 | `--list-templates` | List available templates |
 | `--register` | Register mdview as default program for .md files |
 | `--unregister` | Unregister mdview as default program for .md files |
@@ -69,6 +77,7 @@ mdview --version
 - **Dark mode default**: Respects `prefers-color-scheme: light` for light mode override
 - **Markdown features**: goldmark with GFM, Typographer, auto heading IDs, raw HTML passthrough
 - **Streaming conversion**: Reads input and writes output in chunks to minimize memory usage
+- **Self-contained mode**: Embeds images, fonts, and CSS assets as base64 data URIs for portable HTML
 
 ## Dependencies
 

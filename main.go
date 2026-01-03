@@ -22,6 +22,8 @@ func main() {
 	showVersion := flag.Bool("version", false, "Show version information")
 	listTemplates := flag.Bool("list-templates", false, "List available templates")
 	noBrowser := flag.Bool("no-browser", false, "Don't open browser after conversion")
+	selfContained := flag.Bool("self-contained", false, "Embed images as base64 data URIs instead of file:// URLs")
+	preload := flag.Bool("preload", false, "Preload all images in a directory when first image is referenced (use with --self-contained)")
 	doRegister := flag.Bool("register", false, "Register mdview as the default program for .md files")
 	doUnregister := flag.Bool("unregister", false, "Unregister mdview as the default program for .md files")
 
@@ -106,13 +108,13 @@ func main() {
 	}
 
 	// Run the conversion
-	if err := run(inputPath, outputPath, *templateName, !*noBrowser); err != nil {
+	if err := run(inputPath, outputPath, *templateName, !*noBrowser, *selfContained, *preload); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 }
 
-func run(inputPath, outputPath, templateName string, openBrowser bool) error {
+func run(inputPath, outputPath, templateName string, openBrowser, selfContained, preload bool) error {
 	// Determine output path
 	finalOutputPath, err := output.GetOutputPath(outputPath)
 	if err != nil {
@@ -148,6 +150,8 @@ func run(inputPath, outputPath, templateName string, openBrowser bool) error {
 	// Create converter and perform conversion with size hint
 	conv := converter.New()
 	conv.SetBaseDir(filepath.Dir(absInputPath))
+	conv.SetSelfContained(selfContained)
+	conv.SetPreload(preload)
 	if err := conv.ConvertWithSize(inputFile, outputFile, templateName, fileSize); err != nil {
 		// Clean up partial output file on error
 		outputFile.Close()
