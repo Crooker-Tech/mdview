@@ -143,6 +143,8 @@ var (
 	hrefPattern = regexp.MustCompile(`(href=["'])([^"']+)(["'])`)
 	// Pattern for CSS url() references: url("path"), url('path'), or url(path)
 	cssURLPattern = regexp.MustCompile(`(url\(["']?)([^"')]+)(["']?\))`)
+	// Pattern for anchor tags without target attribute (to add target="_blank")
+	anchorNoTargetPattern = regexp.MustCompile(`(<a\s+[^>]*href=["'])([^"']+)(["'][^>]*)(>)`)
 )
 
 // New creates a new Converter instance
@@ -349,6 +351,11 @@ func (r *pathRenderer) renderLink(w util.BufWriter, source []byte, node ast.Node
 		_, _ = w.WriteString(htmlpkg.EscapeString(finalDest))
 		_, _ = w.WriteString("\"")
 
+		// Open external links in new tab (not javascript: or anchors)
+		if !strings.HasPrefix(finalDest, "javascript:") && !strings.HasPrefix(finalDest, "#") {
+			_, _ = w.WriteString(" target=\"_blank\"")
+		}
+
 		if n.Title != nil {
 			_, _ = w.WriteString(" title=\"")
 			_, _ = w.WriteString(htmlpkg.EscapeString(string(n.Title)))
@@ -407,14 +414,22 @@ func (r *pathRenderer) processRawHTMLContent(content string) string {
 		return prefix + r.processImagePath(path) + suffix
 	})
 
-	// Process href attributes
-	content = hrefPattern.ReplaceAllStringFunc(content, func(match string) string {
-		submatches := hrefPattern.FindStringSubmatch(match)
-		if len(submatches) != 4 {
+	// Process href attributes and add target="_blank" for external links
+	content = anchorNoTargetPattern.ReplaceAllStringFunc(content, func(match string) string {
+		submatches := anchorNoTargetPattern.FindStringSubmatch(match)
+		if len(submatches) != 5 {
 			return match
 		}
-		prefix, path, suffix := submatches[1], submatches[2], submatches[3]
-		return prefix + r.processLinkPath(path) + suffix
+		prefix, path, middle, suffix := submatches[1], submatches[2], submatches[3], submatches[4]
+		processedPath := r.processLinkPath(path)
+
+		// Add target="_blank" for non-javascript, non-anchor links (if not already has target)
+		if !strings.HasPrefix(processedPath, "javascript:") &&
+			!strings.HasPrefix(processedPath, "#") &&
+			!strings.Contains(middle, "target=") {
+			return prefix + processedPath + middle + " target=\"_blank\"" + suffix
+		}
+		return prefix + processedPath + middle + suffix
 	})
 
 	// Process CSS url() references if self-contained
