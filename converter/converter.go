@@ -472,6 +472,42 @@ func (r *pathRenderer) processCSSAssetPath(path string) string {
 
 // processLinkPath handles path resolution for links (no embedding, just file:// conversion)
 func (r *pathRenderer) processLinkPath(path string) string {
+	// In archive mode, convert ALL .md links to javascript:mdviewLoadPage() calls
+	// This must happen FIRST, before any other checks, to catch file:// URLs too
+	if r.archiveMode && r.archiveRootDir != "" && strings.HasSuffix(strings.ToLower(path), ".md") {
+		var absPath string
+
+		// Handle file:// URLs
+		if strings.HasPrefix(path, "file:///") {
+			absPath = strings.TrimPrefix(path, "file:///")
+			absPath = filepath.FromSlash(absPath)
+		} else if strings.Contains(path, "://") {
+			// Other protocols with .md - skip (e.g., https://example.com/doc.md)
+			return path
+		} else if r.baseDir != "" {
+			// Relative path - resolve against base directory
+			absPath = filepath.Join(r.baseDir, path)
+		} else {
+			// No base dir, can't resolve
+			return path
+		}
+
+		absPath = filepath.Clean(absPath)
+
+		// Compute relative path from archive root directory
+		relPath, err := filepath.Rel(r.archiveRootDir, absPath)
+		if err != nil {
+			// Fallback to filename only if rel fails
+			relPath = filepath.Base(absPath)
+		}
+
+		// Normalize to forward slashes for consistency
+		relPath = strings.ReplaceAll(relPath, "\\", "/")
+
+		// Return javascript: href with the archive key
+		return "javascript:mdviewLoadPage('" + relPath + "')"
+	}
+
 	// Skip if already absolute or special protocol
 	if strings.Contains(path, "://") ||
 		strings.HasPrefix(path, "#") ||
@@ -484,27 +520,6 @@ func (r *pathRenderer) processLinkPath(path string) string {
 
 	if r.baseDir == "" {
 		return path
-	}
-
-	// In archive mode, convert .md links to javascript:mdviewLoadPage() calls
-	// with the archive-relative path that matches the archive keys
-	if r.archiveMode && strings.HasSuffix(strings.ToLower(path), ".md") && r.archiveRootDir != "" {
-		// Resolve to absolute path
-		absPath := filepath.Join(r.baseDir, path)
-		absPath = filepath.Clean(absPath)
-
-		// Compute relative path from archive root directory
-		relPath, err := filepath.Rel(r.archiveRootDir, absPath)
-		if err != nil {
-			// Fallback to original path if rel fails
-			relPath = path
-		}
-
-		// Normalize to forward slashes for consistency
-		relPath = strings.ReplaceAll(relPath, "\\", "/")
-
-		// Return javascript: href with the archive key
-		return "javascript:mdviewLoadPage('" + relPath + "')"
 	}
 
 	// Resolve relative path and convert to file:// URL

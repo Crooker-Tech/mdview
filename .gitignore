@@ -28,4 +28,9 @@ Thumbs.db
 *.html
 
 # Test directories
-test_archive/
+test_*/
+
+# Node.js (not used, but may appear from tooling)
+package.json
+package-lock.json
+node_modules/
