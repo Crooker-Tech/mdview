@@ -26,3 +26,6 @@ Thumbs.db
 
 # Generated output
 *.html
+
+# Test directories
+test_archive/
