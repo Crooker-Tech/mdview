@@ -23,7 +23,7 @@ func main() {
 	showVersion := flag.Bool("version", false, "Show version information")
 	listTemplates := flag.Bool("list-templates", false, "List available templates")
 	noBrowser := flag.Bool("no-browser", false, "Don't open browser after conversion")
-	selfContained := flag.Bool("self-contained", false, "Embed images as base64 data URIs instead of file:// URLs")
+	selfContained := flag.Bool("self-contained", false, "Embed images and linked local .md files as base64 data URIs instead of file:// URLs")
 	preload := flag.Bool("preload", false, "Preload all images in a directory when first image is referenced (use with --self-contained)")
 	maxPages := flag.Int("max-pages", 10, "Maximum number of pages to embed in archive (use with --self-contained)")
 	doRegister := flag.Bool("register", false, "Register mdview as the default program for .md files")
@@ -37,7 +37,13 @@ func main() {
 		fmt.Fprintf(os.Stderr, "  input.md      Path to the markdown file to convert\n")
 		fmt.Fprintf(os.Stderr, "  output.html   Optional output path (default: temp file in %%LocalAppData%%\\mdview)\n\n")
 		fmt.Fprintf(os.Stderr, "Options:\n")
-		flag.PrintDefaults()
+		flag.VisitAll(func(f *flag.Flag) {
+			fmt.Fprintf(os.Stderr, "  --%s", f.Name)
+			if f.DefValue != "false" && f.DefValue != "" {
+				fmt.Fprintf(os.Stderr, " %s", f.DefValue)
+			}
+			fmt.Fprintf(os.Stderr, "\n        %s\n", f.Usage)
+		})
 	}
 
 	flag.Parse()
