@@ -469,3 +469,90 @@ func TestIntegration_BidirectionalLinks(t *testing.T) {
 		t.Error("B does not link to A")
 	}
 }
+
+// TestIntegration_ArchiveWithPreload tests archive creation with --preload flag
+func TestIntegration_ArchiveWithPreload(t *testing.T) {
+	tempDir := t.TempDir()
+
+	// Create test files with images
+	rootPath := filepath.Join(tempDir, "root.md")
+	docPath := filepath.Join(tempDir, "doc.md")
+	imgPath := filepath.Join(tempDir, "test.png")
+
+	rootContent := "# Root\n\n[Doc](doc.md)\n\n![Image](test.png)\n"
+	docContent := "# Doc\n\n[Back](root.md)\n\n![Same Image](test.png)\n"
+
+	// Create a minimal PNG (1x1 transparent)
+	pngData := []byte{
+		0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d,
+		0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+		0x08, 0x06, 0x00, 0x00, 0x00, 0x1f, 0x15, 0xc4, 0x89, 0x00, 0x00, 0x00,
+		0x0a, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9c, 0x63, 0x00, 0x01, 0x00, 0x00,
+		0x05, 0x00, 0x01, 0x0d, 0x0a, 0x2d, 0xb4, 0x00, 0x00, 0x00, 0x00, 0x49,
+		0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
+	}
+
+	if err := os.WriteFile(rootPath, []byte(rootContent), 0644); err != nil {
+		t.Fatalf("Failed to create root: %v", err)
+	}
+	if err := os.WriteFile(docPath, []byte(docContent), 0644); err != nil {
+		t.Fatalf("Failed to create doc: %v", err)
+	}
+	if err := os.WriteFile(imgPath, pngData, 0644); err != nil {
+		t.Fatalf("Failed to create image: %v", err)
+	}
+
+	// Test without preload
+	outputNoPreload := filepath.Join(tempDir, "no_preload.html")
+	err := WriteArchive(rootPath, outputNoPreload, "default", 10, true, false)
+	if err != nil {
+		t.Fatalf("WriteArchive() without preload error = %v", err)
+	}
+
+	// Test with preload
+	outputWithPreload := filepath.Join(tempDir, "with_preload.html")
+	err = WriteArchive(rootPath, outputWithPreload, "default", 10, true, true)
+	if err != nil {
+		t.Fatalf("WriteArchive() with preload error = %v", err)
+	}
+
+	// Both outputs should exist and be valid
+	noPreloadData, err := os.ReadFile(outputNoPreload)
+	if err != nil {
+		t.Fatalf("Failed to read no_preload output: %v", err)
+	}
+	withPreloadData, err := os.ReadFile(outputWithPreload)
+	if err != nil {
+		t.Fatalf("Failed to read with_preload output: %v", err)
+	}
+
+	// Both should have the same essential content
+	noPreloadStr := string(noPreloadData)
+	withPreloadStr := string(withPreloadData)
+
+	// Check for archive components
+	for _, s := range []string{"mdviewArchive", "mdviewLoadPage", "root.md", "doc.md"} {
+		if !strings.Contains(noPreloadStr, s) {
+			t.Errorf("no_preload output missing: %s", s)
+		}
+		if !strings.Contains(withPreloadStr, s) {
+			t.Errorf("with_preload output missing: %s", s)
+		}
+	}
+
+	// Both should have embedded image (data:image/png)
+	if !strings.Contains(noPreloadStr, "data:image/png") {
+		t.Error("no_preload output missing embedded image")
+	}
+	if !strings.Contains(withPreloadStr, "data:image/png") {
+		t.Error("with_preload output missing embedded image")
+	}
+
+	// Both should have javascript: links for .md files
+	if !strings.Contains(noPreloadStr, "javascript:mdviewLoadPage") {
+		t.Error("no_preload output missing javascript: links")
+	}
+	if !strings.Contains(withPreloadStr, "javascript:mdviewLoadPage") {
+		t.Error("with_preload output missing javascript: links")
+	}
+}
