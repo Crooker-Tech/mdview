@@ -17,9 +17,68 @@ mdview --self-contained document.md
 # Self-contained with parallel image preloading (faster for many images)
 mdview --self-contained --preload document.md
 
+# Multi-page archive (automatically embeds linked .md files)
+mdview --self-contained document.md archive.html
+
+# Multi-page archive with custom page limit
+mdview --self-contained --max-pages 25 document.md archive.html
+
 # Output to specific file without opening browser
 mdview --no-browser input.md output.html
 ```
+
+## Multi-Page Archive Feature
+
+When using `--self-contained`, mdview automatically detects links to other local `.md` files and creates a **multi-page HTML archive** - a single, portable HTML file containing multiple markdown documents with full navigation.
+
+### How It Works
+
+1. **Automatic Detection**: When converting with `--self-contained`, mdview scans for links to local `.md` files
+2. **Graph Building**: Uses BFS to discover all linked documents (respects `--max-pages` limit, default: 10)
+3. **Compression**: Each page is gzip-compressed and base64-encoded
+4. **Navigation**: JavaScript overlay system allows clicking between embedded pages
+5. **Portability**: Everything (pages, images, fonts) embedded in one HTML file
+
+### Example
+
+```markdown
+<!-- root.md -->
+# Project Documentation
+
+- [Getting Started](docs/start.md)
+- [API Reference](docs/api.md)
+
+<!-- docs/start.md -->
+# Getting Started
+[Back to root](../root.md)
+...
+```
+
+```bash
+mdview --self-contained root.md docs.html
+# Output: "Building archive with 3 pages..."
+```
+
+Opening `docs.html`:
+- Click "Getting Started" → overlay opens with `docs/start.md` content
+- Click "Back to root" → overlay closes, returns to root page
+- All navigation happens in JavaScript, no network required
+
+### Features
+
+- **Bidirectional Navigation**: History tracking automatically detects back links
+- **Self-Contained**: Images embedded per-page as base64 data URIs
+- **Compressed**: Gzip compression reduces archive size (~40-50% of uncompressed HTML)
+- **Cycle-Safe**: BFS prevents infinite loops in circular references
+- **Limit Control**: `--max-pages N` caps archive size
+- **Dark Mode**: Inherits template styling (respects `prefers-color-scheme`)
+
+### Technical Details
+
+- **Compression**: Uses pako.js (11KB) for client-side gzip decompression
+- **Memory**: Holds one page in memory at a time during build
+- **Performance**: Parallel image preloading with `--preload` speeds up multi-image documents
+- **Compatibility**: Works in any modern browser supporting ES6
 
 ## Implementation Gotchas
 
@@ -184,6 +243,14 @@ go test -bench=. -benchmem ./converter
 ```
 mdview/
 ├── main.go              # CLI entry point, flag parsing
+├── archive/             # Multi-page archive system
+│   ├── graph.go         # Dependency graph data structure
+│   ├── scanner.go       # Markdown link extraction
+│   ├── builder.go       # BFS graph builder with cycle detection
+│   ├── converter.go     # Archive HTML generation with compression
+│   ├── navigation.js    # Client-side navigation & overlay (embedded)
+│   ├── overlay.css      # Overlay styling (embedded)
+│   └── pako.min.js      # Gzip decompression library (embedded)
 ├── converter/           # Markdown-to-HTML conversion with custom renderers
 ├── templates/           # Embedded CSS, JS, HTML via //go:embed
 ├── browser/             # Windows browser opener

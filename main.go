@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"mdview/archive"
 	"mdview/browser"
 	"mdview/converter"
 	"mdview/output"
@@ -24,6 +25,7 @@ func main() {
 	noBrowser := flag.Bool("no-browser", false, "Don't open browser after conversion")
 	selfContained := flag.Bool("self-contained", false, "Embed images as base64 data URIs instead of file:// URLs")
 	preload := flag.Bool("preload", false, "Preload all images in a directory when first image is referenced (use with --self-contained)")
+	maxPages := flag.Int("max-pages", 10, "Maximum number of pages to embed in archive (use with --self-contained)")
 	doRegister := flag.Bool("register", false, "Register mdview as the default program for .md files")
 	doUnregister := flag.Bool("unregister", false, "Unregister mdview as the default program for .md files")
 
@@ -108,13 +110,13 @@ func main() {
 	}
 
 	// Run the conversion
-	if err := run(inputPath, outputPath, *templateName, !*noBrowser, *selfContained, *preload); err != nil {
+	if err := run(inputPath, outputPath, *templateName, !*noBrowser, *selfContained, *preload, *maxPages); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 }
 
-func run(inputPath, outputPath, templateName string, openBrowser, selfContained, preload bool) error {
+func run(inputPath, outputPath, templateName string, openBrowser, selfContained, preload bool, maxPages int) error {
 	// Determine output path
 	finalOutputPath, err := output.GetOutputPath(outputPath)
 	if err != nil {
@@ -127,6 +129,44 @@ func run(inputPath, outputPath, templateName string, openBrowser, selfContained,
 		return fmt.Errorf("failed to resolve input path: %w", err)
 	}
 
+	// If self-contained, check if document has links to other .md files
+	if selfContained {
+		hasMarkdownLinks, err := archive.HasMarkdownLinks(absInputPath)
+		if err != nil {
+			// Don't fail, just log warning and continue with single-file conversion
+			fmt.Fprintf(os.Stderr, "Warning: failed to check for markdown links: %v\n", err)
+		} else if hasMarkdownLinks {
+			// Use archive converter for multi-page archive
+			return runArchiveConversion(absInputPath, finalOutputPath, templateName, openBrowser, selfContained, preload, maxPages)
+		}
+	}
+
+	// Fall back to single-file conversion
+	return runSingleFileConversion(absInputPath, finalOutputPath, templateName, openBrowser, selfContained, preload)
+}
+
+func runArchiveConversion(absInputPath, finalOutputPath, templateName string, openBrowser, selfContained, preload bool, maxPages int) error {
+	// Use archive writer helper function
+	err := archive.WriteArchive(absInputPath, finalOutputPath, templateName, maxPages, selfContained, preload)
+	if err != nil {
+		return err
+	}
+
+	// Print output path
+	fmt.Printf("Generated: %s\n", finalOutputPath)
+
+	// Open in browser if requested
+	if openBrowser {
+		if err := browser.Open(finalOutputPath); err != nil {
+			// Don't fail on browser error, just warn
+			fmt.Fprintf(os.Stderr, "Warning: failed to open browser: %v\n", err)
+		}
+	}
+
+	return nil
+}
+
+func runSingleFileConversion(absInputPath, finalOutputPath, templateName string, openBrowser, selfContained, preload bool) error {
 	// Open input file for streaming read
 	inputFile, err := os.Open(absInputPath)
 	if err != nil {
