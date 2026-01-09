@@ -129,10 +129,11 @@ var bufferPool = sync.Pool{
 
 // Converter handles markdown to HTML conversion with streaming output
 type Converter struct {
-	baseDir       string      // Base directory for resolving relative paths
-	selfContained bool        // Embed images as base64 data URIs instead of file:// URLs
-	preload       bool        // Preload all images in a directory when first image is referenced
-	imageCache    *ImageCache // Cache for preloaded images (only used when preload is enabled)
+	baseDir           string      // Base directory for resolving relative paths
+	selfContained     bool        // Embed images as base64 data URIs instead of file:// URLs
+	preload           bool        // Preload all images in a directory when first image is referenced
+	archiveMode       bool        // Keep .md links as relative paths for archive navigation
+	imageCache        *ImageCache // Cache for preloaded images (only used when preload is enabled)
 }
 
 // Regex patterns for finding src and href attributes in raw HTML
@@ -171,6 +172,13 @@ func (c *Converter) SetPreload(enabled bool) {
 	}
 }
 
+// SetArchiveMode enables archive mode where .md links are kept as relative paths
+// instead of being converted to file:// URLs. This allows the navigation.js to
+// intercept clicks and load embedded pages from the archive.
+func (c *Converter) SetArchiveMode(enabled bool) {
+	c.archiveMode = enabled
+}
+
 // createMarkdown builds a goldmark instance with appropriate settings
 func (c *Converter) createMarkdown() goldmark.Markdown {
 	return goldmark.New(
@@ -198,6 +206,7 @@ func (c *Converter) createMarkdown() goldmark.Markdown {
 						baseDir:       c.baseDir,
 						selfContained: c.selfContained,
 						preload:       c.preload,
+						archiveMode:   c.archiveMode,
 						imageCache:    c.imageCache,
 					}, 100), // Higher priority (lower number) for our custom renderer
 				),
@@ -270,6 +279,7 @@ type pathRenderer struct {
 	baseDir       string
 	selfContained bool
 	preload       bool
+	archiveMode   bool
 	imageCache    *ImageCache
 }
 
@@ -464,6 +474,12 @@ func (r *pathRenderer) processLinkPath(path string) string {
 	}
 
 	if r.baseDir == "" {
+		return path
+	}
+
+	// In archive mode, keep .md links as relative paths for navigation.js
+	// The navigation.js intercepts clicks on .md links and loads embedded pages
+	if r.archiveMode && strings.HasSuffix(strings.ToLower(path), ".md") {
 		return path
 	}
 

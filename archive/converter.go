@@ -102,6 +102,7 @@ func (ac *ArchiveConverter) convertPage(mdPath string) ([]byte, error) {
 	conv.SetBaseDir(filepath.Dir(mdPath))
 	conv.SetSelfContained(ac.selfContained)
 	conv.SetPreload(ac.preload)
+	conv.SetArchiveMode(true) // Keep .md links as relative paths for navigation
 
 	// Convert to HTML
 	var htmlBuf bytes.Buffer

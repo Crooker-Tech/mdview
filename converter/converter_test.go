@@ -1685,3 +1685,115 @@ func BenchmarkLargeImagesWithPreload(b *testing.B) {
 		_ = c.Convert(strings.NewReader(markdown), &buf, "default")
 	}
 }
+
+// =============================================================================
+// Archive Mode Tests
+// =============================================================================
+
+func TestArchiveMode_KeepsMarkdownLinksRelative(t *testing.T) {
+	dir, cleanup := setupTestDir(t)
+	defer cleanup()
+
+	// Create a second markdown file to link to
+	docPath := filepath.Join(dir, "doc.md")
+	if err := os.WriteFile(docPath, []byte("# Doc"), 0644); err != nil {
+		t.Fatalf("failed to create doc.md: %v", err)
+	}
+
+	markdown := `# Root
+
+[Documentation](doc.md)
+[Subdoc](subdir/page.md)
+[External](https://example.com)
+`
+
+	// Test with archive mode enabled
+	c := New()
+	c.SetBaseDir(dir)
+	c.SetSelfContained(true)
+	c.SetArchiveMode(true)
+
+	result := convert(t, c, markdown)
+
+	// .md links should stay relative
+	if !strings.Contains(result, `href="doc.md"`) {
+		t.Error("expected .md link to stay relative in archive mode")
+	}
+	if !strings.Contains(result, `href="subdir/page.md"`) {
+		t.Error("expected subdirectory .md link to stay relative in archive mode")
+	}
+
+	// External links should be unchanged
+	if !strings.Contains(result, `href="https://example.com"`) {
+		t.Error("expected external link to remain unchanged")
+	}
+
+	// Should NOT contain file:// URLs for .md links
+	if strings.Contains(result, `href="file:///`) && strings.Contains(result, `.md"`) {
+		t.Error("archive mode should not convert .md links to file:// URLs")
+	}
+}
+
+func TestArchiveMode_Disabled(t *testing.T) {
+	dir, cleanup := setupTestDir(t)
+	defer cleanup()
+
+	// Create a second markdown file to link to
+	docPath := filepath.Join(dir, "doc.md")
+	if err := os.WriteFile(docPath, []byte("# Doc"), 0644); err != nil {
+		t.Fatalf("failed to create doc.md: %v", err)
+	}
+
+	markdown := `[Documentation](doc.md)`
+
+	// Test with archive mode disabled (default)
+	c := New()
+	c.SetBaseDir(dir)
+	c.SetSelfContained(true)
+	c.SetArchiveMode(false)
+
+	result := convert(t, c, markdown)
+
+	// .md links should be converted to file:// URLs when archive mode is off
+	if !strings.Contains(result, `href="file:///`) {
+		t.Error("expected .md link to be converted to file:// URL when archive mode is disabled")
+	}
+}
+
+func TestArchiveMode_OnlyAffectsMarkdownLinks(t *testing.T) {
+	dir, cleanup := setupTestDir(t)
+	defer cleanup()
+
+	markdown := `
+[Markdown](doc.md)
+[HTML](page.html)
+[PDF](document.pdf)
+[External](https://example.com)
+[Anchor](#section)
+`
+
+	c := New()
+	c.SetBaseDir(dir)
+	c.SetSelfContained(true)
+	c.SetArchiveMode(true)
+
+	result := convert(t, c, markdown)
+
+	// .md links stay relative
+	if !strings.Contains(result, `href="doc.md"`) {
+		t.Error("expected .md link to stay relative")
+	}
+
+	// Other file types should be converted to file:// URLs
+	if !strings.Contains(result, `href="file:///`) || !strings.Contains(result, `page.html"`) {
+		t.Error("expected non-.md file links to be converted to file:// URLs")
+	}
+
+	// Anchors and external links unchanged
+	if !strings.Contains(result, `href="#section"`) {
+		t.Error("expected anchor to remain unchanged")
+	}
+	if !strings.Contains(result, `href="https://example.com"`) {
+		t.Error("expected external link to remain unchanged")
+	}
+}
