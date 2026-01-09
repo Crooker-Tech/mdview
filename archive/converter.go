@@ -20,9 +20,6 @@ var pakoJS string
 //go:embed navigation.js
 var navigationJS string
 
-//go:embed overlay.css
-var overlayCSS string
-
 // ArchiveConverter handles conversion of a graph of markdown files to a single HTML archive
 type ArchiveConverter struct {
 	graph         *Graph
@@ -102,7 +99,8 @@ func (ac *ArchiveConverter) convertPage(mdPath string) ([]byte, error) {
 	conv.SetBaseDir(filepath.Dir(mdPath))
 	conv.SetSelfContained(ac.selfContained)
 	conv.SetPreload(ac.preload)
-	conv.SetArchiveMode(true) // Keep .md links as relative paths for navigation
+	conv.SetArchiveMode(true) // Convert .md links to javascript:mdviewLoadPage() calls
+	conv.SetArchiveRootDir(filepath.Dir(ac.graph.Root)) // Root directory for computing archive-relative paths
 
 	// Convert to HTML
 	var htmlBuf bytes.Buffer
@@ -122,30 +120,17 @@ func (ac *ArchiveConverter) convertRootPage(mdPath string) (string, error) {
 	return string(htmlBytes), nil
 }
 
-// generateArchiveResources creates all archive resources (overlay, CSS, JS, data)
+// generateArchiveResources creates archive resources (JS and data for navigation)
 func (ac *ArchiveConverter) generateArchiveResources(archiveData map[string]string) string {
 	var sb strings.Builder
 
-	// 1. Add overlay HTML structure
-	sb.WriteString("\n<!-- mdview archive overlay -->\n")
-	sb.WriteString("<div id=\"mdview-overlay\" class=\"mdview-overlay\">\n")
-	sb.WriteString("  <button class=\"mdview-close-btn\" aria-label=\"Close\">✕ Close</button>\n")
-	sb.WriteString("  <div class=\"mdview-overlay-content\">\n")
-	sb.WriteString("    <article class=\"markdown-body\" id=\"mdview-overlay-body\"></article>\n")
-	sb.WriteString("  </div>\n")
-	sb.WriteString("</div>\n\n")
-
-	// 2. Add overlay CSS
-	sb.WriteString("<style>\n")
-	sb.WriteString(overlayCSS)
-	sb.WriteString("\n</style>\n\n")
-
-	// 3. Add pako.js for decompression
+	// 1. Add pako.js for decompression
+	sb.WriteString("\n<!-- mdview archive -->\n")
 	sb.WriteString("<script>\n")
 	sb.WriteString(pakoJS)
 	sb.WriteString("\n</script>\n\n")
 
-	// 4. Add archive data
+	// 2. Add archive data
 	sb.WriteString("<script>\n")
 	sb.WriteString("// mdview archive data - compressed pages\n")
 	sb.WriteString("window.mdviewArchive = {\n")
@@ -176,7 +161,7 @@ func (ac *ArchiveConverter) generateArchiveResources(archiveData map[string]stri
 	sb.WriteString("};\n")
 	sb.WriteString("</script>\n\n")
 
-	// 5. Add navigation.js
+	// 3. Add navigation.js
 	sb.WriteString("<script>\n")
 	sb.WriteString(navigationJS)
 	sb.WriteString("\n</script>\n")

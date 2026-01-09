@@ -168,13 +168,9 @@ func TestArchiveConverter_GenerateArchiveResources(t *testing.T) {
 
 	// Verify all required components are present
 	requiredComponents := []string{
-		"mdview-overlay",           // Overlay HTML
-		"mdview-overlay-content",   // Overlay content container
-		"mdview-close-btn",         // Close button
-		".mdview-overlay",          // CSS class
 		"pako",                     // Decompression library
 		"window.mdviewArchive",     // Archive data object
-		"loadEmbeddedPage",         // Navigation function
+		"mdviewLoadPage",           // Navigation function
 	}
 
 	for _, component := range requiredComponents {
@@ -251,7 +247,6 @@ func TestArchiveConverter_ConvertToArchive(t *testing.T) {
 		"<body>",
 		"</body>",
 		"</html>",
-		"mdview-overlay",
 		"window.mdviewArchive",
 		"pako",
 	}

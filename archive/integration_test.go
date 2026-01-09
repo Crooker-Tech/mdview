@@ -96,9 +96,6 @@ func TestIntegration_TwoPageArchive(t *testing.T) {
 	if !strings.Contains(outputStr, "pako") {
 		t.Error("Output missing pako decompression library")
 	}
-	if !strings.Contains(outputStr, "mdview-overlay") {
-		t.Error("Output missing overlay structure")
-	}
 
 	// Verify both pages are in archive
 	if !strings.Contains(outputStr, "root.md") {

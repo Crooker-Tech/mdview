@@ -133,6 +133,7 @@ type Converter struct {
 	selfContained     bool        // Embed images as base64 data URIs instead of file:// URLs
 	preload           bool        // Preload all images in a directory when first image is referenced
 	archiveMode       bool        // Keep .md links as relative paths for archive navigation
+	archiveRootDir    string      // Root directory of the archive (for computing relative paths)
 	imageCache        *ImageCache // Cache for preloaded images (only used when preload is enabled)
 }
 
@@ -172,11 +173,16 @@ func (c *Converter) SetPreload(enabled bool) {
 	}
 }
 
-// SetArchiveMode enables archive mode where .md links are kept as relative paths
-// instead of being converted to file:// URLs. This allows the navigation.js to
-// intercept clicks and load embedded pages from the archive.
+// SetArchiveMode enables archive mode where .md links are converted to
+// javascript:mdviewLoadPage('...') calls with archive-relative paths.
 func (c *Converter) SetArchiveMode(enabled bool) {
 	c.archiveMode = enabled
+}
+
+// SetArchiveRootDir sets the root directory of the archive for computing
+// relative paths that match the archive keys.
+func (c *Converter) SetArchiveRootDir(dir string) {
+	c.archiveRootDir = dir
 }
 
 // createMarkdown builds a goldmark instance with appropriate settings
@@ -203,11 +209,12 @@ func (c *Converter) createMarkdown() goldmark.Markdown {
 						html.WithUnsafe(),
 					), 1000),
 					util.Prioritized(&pathRenderer{
-						baseDir:       c.baseDir,
-						selfContained: c.selfContained,
-						preload:       c.preload,
-						archiveMode:   c.archiveMode,
-						imageCache:    c.imageCache,
+						baseDir:        c.baseDir,
+						selfContained:  c.selfContained,
+						preload:        c.preload,
+						archiveMode:    c.archiveMode,
+						archiveRootDir: c.archiveRootDir,
+						imageCache:     c.imageCache,
 					}, 100), // Higher priority (lower number) for our custom renderer
 				),
 			),
@@ -276,11 +283,12 @@ func (c *Converter) ConvertWithSize(reader io.Reader, writer io.Writer, template
 // pathRenderer is a custom goldmark renderer for images and links that handles
 // path resolution and base64 embedding during the rendering pass
 type pathRenderer struct {
-	baseDir       string
-	selfContained bool
-	preload       bool
-	archiveMode   bool
-	imageCache    *ImageCache
+	baseDir        string
+	selfContained  bool
+	preload        bool
+	archiveMode    bool
+	archiveRootDir string
+	imageCache     *ImageCache
 }
 
 // RegisterFuncs implements renderer.NodeRenderer
@@ -469,7 +477,8 @@ func (r *pathRenderer) processLinkPath(path string) string {
 		strings.HasPrefix(path, "#") ||
 		strings.HasPrefix(path, "data:") ||
 		strings.HasPrefix(path, "mailto:") ||
-		strings.HasPrefix(path, "tel:") {
+		strings.HasPrefix(path, "tel:") ||
+		strings.HasPrefix(path, "javascript:") {
 		return path
 	}
 
@@ -477,10 +486,25 @@ func (r *pathRenderer) processLinkPath(path string) string {
 		return path
 	}
 
-	// In archive mode, keep .md links as relative paths for navigation.js
-	// The navigation.js intercepts clicks on .md links and loads embedded pages
-	if r.archiveMode && strings.HasSuffix(strings.ToLower(path), ".md") {
-		return path
+	// In archive mode, convert .md links to javascript:mdviewLoadPage() calls
+	// with the archive-relative path that matches the archive keys
+	if r.archiveMode && strings.HasSuffix(strings.ToLower(path), ".md") && r.archiveRootDir != "" {
+		// Resolve to absolute path
+		absPath := filepath.Join(r.baseDir, path)
+		absPath = filepath.Clean(absPath)
+
+		// Compute relative path from archive root directory
+		relPath, err := filepath.Rel(r.archiveRootDir, absPath)
+		if err != nil {
+			// Fallback to original path if rel fails
+			relPath = path
+		}
+
+		// Normalize to forward slashes for consistency
+		relPath = strings.ReplaceAll(relPath, "\\", "/")
+
+		// Return javascript: href with the archive key
+		return "javascript:mdviewLoadPage('" + relPath + "')"
 	}
 
 	// Resolve relative path and convert to file:// URL

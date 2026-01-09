@@ -1712,15 +1712,16 @@ func TestArchiveMode_KeepsMarkdownLinksRelative(t *testing.T) {
 	c.SetBaseDir(dir)
 	c.SetSelfContained(true)
 	c.SetArchiveMode(true)
+	c.SetArchiveRootDir(dir) // Set archive root for javascript: URL generation
 
 	result := convert(t, c, markdown)
 
-	// .md links should stay relative
-	if !strings.Contains(result, `href="doc.md"`) {
-		t.Error("expected .md link to stay relative in archive mode")
+	// .md links should be converted to javascript:mdviewLoadPage() calls
+	if !strings.Contains(result, `javascript:mdviewLoadPage(&#39;doc.md&#39;)`) {
+		t.Errorf("expected .md link to be javascript:mdviewLoadPage() call in archive mode, got: %s", result)
 	}
-	if !strings.Contains(result, `href="subdir/page.md"`) {
-		t.Error("expected subdirectory .md link to stay relative in archive mode")
+	if !strings.Contains(result, `javascript:mdviewLoadPage(&#39;subdir/page.md&#39;)`) {
+		t.Errorf("expected subdirectory .md link to be javascript:mdviewLoadPage() call in archive mode, got: %s", result)
 	}
 
 	// External links should be unchanged
@@ -1776,12 +1777,13 @@ func TestArchiveMode_OnlyAffectsMarkdownLinks(t *testing.T) {
 	c.SetBaseDir(dir)
 	c.SetSelfContained(true)
 	c.SetArchiveMode(true)
+	c.SetArchiveRootDir(dir) // Set archive root for javascript: URL generation
 
 	result := convert(t, c, markdown)
 
-	// .md links stay relative
-	if !strings.Contains(result, `href="doc.md"`) {
-		t.Error("expected .md link to stay relative")
+	// .md links should be converted to javascript:mdviewLoadPage() calls
+	if !strings.Contains(result, `javascript:mdviewLoadPage(&#39;doc.md&#39;)`) {
+		t.Errorf("expected .md link to be javascript:mdviewLoadPage() call, got: %s", result)
 	}
 
 	// Other file types should be converted to file:// URLs
