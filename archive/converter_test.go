@@ -158,7 +158,7 @@ func TestArchiveConverter_GenerateArchiveResources(t *testing.T) {
 	graph := NewGraph("C:\\test\\root.md")
 	graph.AddNode("C:\\test\\root.md", "root.md", 0)
 
-	ac := NewConverter(graph, "default", true, false)
+	ac := NewConverter(graph, "default", true, false, "")
 
 	archiveData := map[string]string{
 		"root.md": "dGVzdCBkYXRh", // base64 "test data"
@@ -218,7 +218,7 @@ func TestArchiveConverter_ConvertToArchive(t *testing.T) {
 	}
 
 	// Create archive converter
-	ac := NewConverter(graph, "default", true, false)
+	ac := NewConverter(graph, "default", true, false, "")
 
 	// Convert to archive
 	outputPath := filepath.Join(tempDir, "archive.html")
@@ -332,7 +332,7 @@ func TestArchiveConverter_EmptyGraph(t *testing.T) {
 	// Create empty graph
 	graph := NewGraph("C:\\test\\empty.md")
 
-	ac := NewConverter(graph, "default", true, false)
+	ac := NewConverter(graph, "default", true, false, "")
 
 	outputPath := filepath.Join(tempDir, "empty.html")
 
@@ -354,7 +354,7 @@ func TestArchiveConverter_PathEscaping(t *testing.T) {
 	graph := NewGraph("C:\\test\\root.md")
 	graph.AddNode("C:\\test\\root.md", "root.md", 0)
 
-	ac := NewConverter(graph, "default", true, false)
+	ac := NewConverter(graph, "default", true, false, "")
 
 	archiveData := map[string]string{
 		"path\\with\\backslash.md": "data1",
@@ -376,5 +376,120 @@ func TestArchiveConverter_PathEscaping(t *testing.T) {
 	// Verify it's valid JavaScript (no syntax errors in data structure)
 	if !strings.Contains(resources, "window.mdviewArchive") {
 		t.Error("generateArchiveResources() generated invalid JavaScript structure")
+	}
+}
+
+// =============================================================================
+// Custom Title Tests for Archive
+// =============================================================================
+
+func TestArchiveConverter_WithCustomTitle(t *testing.T) {
+	tempDir := t.TempDir()
+
+	// Create test markdown file
+	rootPath := filepath.Join(tempDir, "root.md")
+	rootContent := "# Root Document\n\nThis is the root.\n"
+
+	if err := os.WriteFile(rootPath, []byte(rootContent), 0644); err != nil {
+		t.Fatalf("Failed to create test file: %v", err)
+	}
+
+	// Build graph
+	graph, err := BuildGraph(rootPath, 10)
+	if err != nil {
+		t.Fatalf("BuildGraph() error = %v", err)
+	}
+
+	// Create archive converter with custom title
+	ac := NewConverter(graph, "default", true, false, "My Custom Archive")
+
+	outputPath := filepath.Join(tempDir, "archive.html")
+	err = ac.ConvertToArchive(outputPath)
+	if err != nil {
+		t.Fatalf("ConvertToArchive() error = %v", err)
+	}
+
+	// Read output
+	output, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatalf("Failed to read output: %v", err)
+	}
+
+	outputStr := string(output)
+
+	// Verify custom title is present
+	if !strings.Contains(outputStr, "<title>My Custom Archive</title>") {
+		t.Error("Archive output missing custom title")
+	}
+
+	// Should NOT contain default title
+	if strings.Contains(outputStr, "<title>Markdown Preview</title>") {
+		t.Error("Archive output should not contain default title when custom title is set")
+	}
+}
+
+func TestWriteArchive_SetsTitle(t *testing.T) {
+	tempDir := t.TempDir()
+
+	// Create test markdown file
+	rootPath := filepath.Join(tempDir, "root.md")
+	rootContent := "# Root Document\n\nThis is the root.\n"
+
+	if err := os.WriteFile(rootPath, []byte(rootContent), 0644); err != nil {
+		t.Fatalf("Failed to create test file: %v", err)
+	}
+
+	// Output filename will be used as title
+	outputPath := filepath.Join(tempDir, "MyDocumentation.html")
+
+	err := WriteArchive(rootPath, outputPath, "default", 10, true, false)
+	if err != nil {
+		t.Fatalf("WriteArchive() error = %v", err)
+	}
+
+	// Read output
+	output, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatalf("Failed to read output: %v", err)
+	}
+
+	outputStr := string(output)
+
+	// Verify title is set to output filename (without extension)
+	if !strings.Contains(outputStr, "<title>MyDocumentation</title>") {
+		t.Errorf("WriteArchive() should set title to output filename, got:\n%s", outputStr)
+	}
+}
+
+func TestWriteArchive_TitleFromFilenameWithHyphens(t *testing.T) {
+	tempDir := t.TempDir()
+
+	// Create test markdown file
+	rootPath := filepath.Join(tempDir, "root.md")
+	rootContent := "# Root\n"
+
+	if err := os.WriteFile(rootPath, []byte(rootContent), 0644); err != nil {
+		t.Fatalf("Failed to create test file: %v", err)
+	}
+
+	// Output filename with hyphens
+	outputPath := filepath.Join(tempDir, "my-project-docs.html")
+
+	err := WriteArchive(rootPath, outputPath, "default", 10, true, false)
+	if err != nil {
+		t.Fatalf("WriteArchive() error = %v", err)
+	}
+
+	// Read output
+	output, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatalf("Failed to read output: %v", err)
+	}
+
+	outputStr := string(output)
+
+	// Verify title preserves hyphens
+	if !strings.Contains(outputStr, "<title>my-project-docs</title>") {
+		t.Errorf("WriteArchive() should preserve hyphens in title, got:\n%s", outputStr)
 	}
 }

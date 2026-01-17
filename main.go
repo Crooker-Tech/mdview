@@ -198,6 +198,12 @@ func runSingleFileConversion(absInputPath, finalOutputPath, templateName string,
 	conv.SetBaseDir(filepath.Dir(absInputPath))
 	conv.SetSelfContained(selfContained)
 	conv.SetPreload(preload)
+	// Set page title to output filename (without extension) for self-contained HTML
+	if selfContained {
+		outputBase := filepath.Base(finalOutputPath)
+		outputTitle := strings.TrimSuffix(outputBase, filepath.Ext(outputBase))
+		conv.SetTitle(outputTitle)
+	}
 	if err := conv.ConvertWithSize(inputFile, outputFile, templateName, fileSize); err != nil {
 		// Clean up partial output file on error
 		outputFile.Close()

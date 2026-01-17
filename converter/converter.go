@@ -135,6 +135,7 @@ type Converter struct {
 	archiveMode       bool        // Keep .md links as relative paths for archive navigation
 	archiveRootDir    string      // Root directory of the archive (for computing relative paths)
 	imageCache        *ImageCache // Cache for preloaded images (only used when preload is enabled)
+	title             string      // Custom page title (replaces template default)
 }
 
 // Regex patterns for finding src and href attributes in raw HTML
@@ -145,6 +146,8 @@ var (
 	cssURLPattern = regexp.MustCompile(`(url\(["']?)([^"')]+)(["']?\))`)
 	// Pattern for anchor tags without target attribute (to add target="_blank")
 	anchorNoTargetPattern = regexp.MustCompile(`(<a\s+[^>]*href=["'])([^"']+)(["'][^>]*)(>)`)
+	// Pattern for HTML title tag
+	titlePattern = regexp.MustCompile(`<title>[^<]*</title>`)
 )
 
 // New creates a new Converter instance
@@ -185,6 +188,12 @@ func (c *Converter) SetArchiveMode(enabled bool) {
 // relative paths that match the archive keys.
 func (c *Converter) SetArchiveRootDir(dir string) {
 	c.archiveRootDir = dir
+}
+
+// SetTitle sets a custom page title for the HTML output.
+// If not set, the template's default title will be used.
+func (c *Converter) SetTitle(title string) {
+	c.title = title
 }
 
 // createMarkdown builds a goldmark instance with appropriate settings
@@ -776,7 +785,13 @@ func (c *Converter) writeHeader(w io.Writer, tmpl *templates.Template) error {
 	}
 
 	if tmpl.HTML != "" {
-		if _, err := io.WriteString(w, tmpl.HTML); err != nil {
+		templateHTML := tmpl.HTML
+		// Replace title if custom title is set
+		if c.title != "" {
+			newTitle := "<title>" + htmlpkg.EscapeString(c.title) + "</title>"
+			templateHTML = titlePattern.ReplaceAllString(templateHTML, newTitle)
+		}
+		if _, err := io.WriteString(w, templateHTML); err != nil {
 			return err
 		}
 		if _, err := io.WriteString(w, "\n"); err != nil {

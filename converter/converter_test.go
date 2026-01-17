@@ -1799,3 +1799,116 @@ func TestArchiveMode_OnlyAffectsMarkdownLinks(t *testing.T) {
 		t.Error("expected external link to remain unchanged")
 	}
 }
+
+// =============================================================================
+// Custom Title Tests
+// =============================================================================
+
+func TestSetTitle_ReplacesDefaultTitle(t *testing.T) {
+	c := New()
+	c.SetTitle("My Custom Document")
+
+	result := convert(t, c, "# Hello")
+
+	if !strings.Contains(result, "<title>My Custom Document</title>") {
+		t.Errorf("expected custom title in output, got:\n%s", result)
+	}
+
+	// Should NOT contain default title
+	if strings.Contains(result, "<title>Markdown Preview</title>") {
+		t.Error("expected default title to be replaced")
+	}
+}
+
+func TestSetTitle_EmptyTitleUsesDefault(t *testing.T) {
+	c := New()
+	// Don't set title - should use default
+
+	result := convert(t, c, "# Hello")
+
+	if !strings.Contains(result, "<title>Markdown Preview</title>") {
+		t.Errorf("expected default title when no custom title set, got:\n%s", result)
+	}
+}
+
+func TestSetTitle_EscapesHTMLCharacters(t *testing.T) {
+	c := New()
+	c.SetTitle(`My <Document> & "Title"`)
+
+	result := convert(t, c, "# Hello")
+
+	// HTML special characters should be escaped
+	if !strings.Contains(result, "&lt;") || !strings.Contains(result, "&gt;") {
+		t.Error("expected < and > to be HTML escaped in title")
+	}
+	if !strings.Contains(result, "&amp;") {
+		t.Error("expected & to be HTML escaped in title")
+	}
+	if !strings.Contains(result, "&#34;") || !strings.Contains(result, "&quot;") {
+		// Either &#34; or &quot; is acceptable for quote escaping
+		if !strings.Contains(result, "&#34;") && !strings.Contains(result, "&quot;") {
+			t.Error("expected quotes to be HTML escaped in title")
+		}
+	}
+}
+
+func TestSetTitle_WithSpecialCharactersInFilename(t *testing.T) {
+	tests := []struct {
+		name     string
+		title    string
+		wantHas  string
+	}{
+		{
+			name:    "simple filename",
+			title:   "readme",
+			wantHas: "<title>readme</title>",
+		},
+		{
+			name:    "filename with spaces",
+			title:   "My Document",
+			wantHas: "<title>My Document</title>",
+		},
+		{
+			name:    "filename with hyphens",
+			title:   "my-cool-document",
+			wantHas: "<title>my-cool-document</title>",
+		},
+		{
+			name:    "filename with underscores",
+			title:   "my_document_v2",
+			wantHas: "<title>my_document_v2</title>",
+		},
+		{
+			name:    "filename with numbers",
+			title:   "document123",
+			wantHas: "<title>document123</title>",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := New()
+			c.SetTitle(tt.title)
+
+			result := convert(t, c, "# Test")
+
+			if !strings.Contains(result, tt.wantHas) {
+				t.Errorf("expected %q in output, got:\n%s", tt.wantHas, result)
+			}
+		})
+	}
+}
+
+func TestSetTitle_DoesNotAffectNonSelfContained(t *testing.T) {
+	// Title can be set regardless of self-contained mode
+	c := New()
+	c.SetTitle("Custom Title")
+	c.SetSelfContained(false)
+
+	result := convert(t, c, "# Hello")
+
+	// Title should still be replaced
+	if !strings.Contains(result, "<title>Custom Title</title>") {
+		t.Errorf("expected custom title in non-self-contained output, got:\n%s", result)
+	}
+}

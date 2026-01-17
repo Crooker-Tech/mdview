@@ -26,15 +26,17 @@ type ArchiveConverter struct {
 	templateName  string
 	selfContained bool
 	preload       bool
+	title         string
 }
 
 // NewConverter creates a new ArchiveConverter
-func NewConverter(graph *Graph, templateName string, selfContained bool, preload bool) *ArchiveConverter {
+func NewConverter(graph *Graph, templateName string, selfContained bool, preload bool, title string) *ArchiveConverter {
 	return &ArchiveConverter{
 		graph:         graph,
 		templateName:  templateName,
 		selfContained: selfContained,
 		preload:       preload,
+		title:         title,
 	}
 }
 
@@ -44,8 +46,8 @@ func (ac *ArchiveConverter) ConvertToArchive(outputPath string) error {
 	archiveData := make(map[string]string)
 
 	for _, node := range ac.graph.OrderedNodes() {
-		// Convert to HTML
-		htmlContent, err := ac.convertPage(node.Path)
+		// Convert to HTML (no title for embedded pages)
+		htmlContent, err := ac.convertPage(node.Path, "")
 		if err != nil {
 			return fmt.Errorf("failed to convert %s: %w", node.Path, err)
 		}
@@ -80,7 +82,7 @@ func (ac *ArchiveConverter) ConvertToArchive(outputPath string) error {
 }
 
 // convertPage converts a single markdown file to HTML content (just the <article> content)
-func (ac *ArchiveConverter) convertPage(mdPath string) ([]byte, error) {
+func (ac *ArchiveConverter) convertPage(mdPath string, title string) ([]byte, error) {
 	// Open markdown file
 	mdFile, err := os.Open(mdPath)
 	if err != nil {
@@ -101,6 +103,9 @@ func (ac *ArchiveConverter) convertPage(mdPath string) ([]byte, error) {
 	conv.SetPreload(ac.preload)
 	conv.SetArchiveMode(true) // Convert .md links to javascript:mdviewLoadPage() calls
 	conv.SetArchiveRootDir(filepath.Dir(ac.graph.Root)) // Root directory for computing archive-relative paths
+	if title != "" {
+		conv.SetTitle(title)
+	}
 
 	// Convert to HTML
 	var htmlBuf bytes.Buffer
@@ -113,7 +118,7 @@ func (ac *ArchiveConverter) convertPage(mdPath string) ([]byte, error) {
 
 // convertRootPage converts the root markdown file to a complete HTML document
 func (ac *ArchiveConverter) convertRootPage(mdPath string) (string, error) {
-	htmlBytes, err := ac.convertPage(mdPath)
+	htmlBytes, err := ac.convertPage(mdPath, ac.title)
 	if err != nil {
 		return "", err
 	}
@@ -197,14 +202,14 @@ func injectBeforeClosingTag(html, closingTag, content string) string {
 }
 
 // ConvertToArchiveWithTemplate is a convenience function that loads the template and converts
-func ConvertToArchiveWithTemplate(graph *Graph, outputPath, templateName string, selfContained, preload bool) error {
+func ConvertToArchiveWithTemplate(graph *Graph, outputPath, templateName string, selfContained, preload bool, title string) error {
 	// Validate template exists
 	if _, err := templates.Get(templateName); err != nil {
 		return fmt.Errorf("template error: %w", err)
 	}
 
 	// Create converter
-	ac := NewConverter(graph, templateName, selfContained, preload)
+	ac := NewConverter(graph, templateName, selfContained, preload, title)
 
 	// Convert
 	return ac.ConvertToArchive(outputPath)
@@ -250,6 +255,10 @@ func WriteArchive(rootPath, outputPath, templateName string, maxPages int, selfC
 
 	fmt.Printf("Building archive with %d pages...\n", graph.Count)
 
+	// Extract title from output filename (without extension)
+	outputBase := filepath.Base(outputPath)
+	title := strings.TrimSuffix(outputBase, filepath.Ext(outputBase))
+
 	// Convert to archive
-	return ConvertToArchiveWithTemplate(graph, outputPath, templateName, selfContained, preload)
+	return ConvertToArchiveWithTemplate(graph, outputPath, templateName, selfContained, preload, title)
 }
