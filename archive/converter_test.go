@@ -363,9 +363,9 @@ func TestArchiveConverter_PathEscaping(t *testing.T) {
 
 	resources := ac.generateArchiveResources(archiveData)
 
-	// Verify backslashes are escaped
-	if !strings.Contains(resources, "\\\\") {
-		t.Error("generateArchiveResources() did not escape backslashes")
+	// Verify backslashes are normalized to forward slashes (to match link generation)
+	if !strings.Contains(resources, "path/with/backslash.md") {
+		t.Error("generateArchiveResources() did not normalize backslashes to forward slashes")
 	}
 
 	// Verify quotes are escaped
@@ -458,6 +458,80 @@ func TestWriteArchive_SetsTitle(t *testing.T) {
 	// Verify title is set to output filename (without extension)
 	if !strings.Contains(outputStr, "<title>MyDocumentation</title>") {
 		t.Errorf("WriteArchive() should set title to output filename, got:\n%s", outputStr)
+	}
+}
+
+func TestArchiveConverter_NestedDirectoryPaths(t *testing.T) {
+	// Test that nested directory paths are normalized consistently
+	// This is the bug that caused "Page not found in archive" errors
+	tempDir := t.TempDir()
+
+	// Create nested directory structure
+	subDir := filepath.Join(tempDir, "roles", "engineering")
+	if err := os.MkdirAll(subDir, 0755); err != nil {
+		t.Fatalf("Failed to create subdirectory: %v", err)
+	}
+
+	// Create test markdown files
+	rootPath := filepath.Join(tempDir, "root.md")
+	nestedPath := filepath.Join(subDir, "README.md")
+
+	rootContent := "# Root\n\n[Engineering](roles/engineering/README.md)\n"
+	nestedContent := "# Engineering\n\n[Back to root](../../root.md)\n"
+
+	if err := os.WriteFile(rootPath, []byte(rootContent), 0644); err != nil {
+		t.Fatalf("Failed to create root file: %v", err)
+	}
+	if err := os.WriteFile(nestedPath, []byte(nestedContent), 0644); err != nil {
+		t.Fatalf("Failed to create nested file: %v", err)
+	}
+
+	// Build graph
+	graph, err := BuildGraph(rootPath, 10)
+	if err != nil {
+		t.Fatalf("BuildGraph() error = %v", err)
+	}
+
+	if graph.Count != 2 {
+		t.Fatalf("Expected graph with 2 nodes, got %d", graph.Count)
+	}
+
+	// Convert to archive
+	ac := NewConverter(graph, "default", true, false, "")
+	outputPath := filepath.Join(tempDir, "archive.html")
+	if err := ac.ConvertToArchive(outputPath); err != nil {
+		t.Fatalf("ConvertToArchive() error = %v", err)
+	}
+
+	// Read output
+	output, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatalf("Failed to read output: %v", err)
+	}
+	outputStr := string(output)
+
+	// KEY TEST: The archive key must use forward slashes
+	// This matches how the javascript:mdviewLoadPage() calls are generated
+	if !strings.Contains(outputStr, `"roles/engineering/README.md"`) {
+		t.Error("Archive key for nested path should use forward slashes")
+	}
+
+	// The link should also use forward slashes (quotes may be HTML-encoded as &#39;)
+	hasForwardSlashLink := strings.Contains(outputStr, "javascript:mdviewLoadPage('roles/engineering/README.md')") ||
+		strings.Contains(outputStr, "javascript:mdviewLoadPage(&#39;roles/engineering/README.md&#39;)")
+	if !hasForwardSlashLink {
+		t.Error("Archive link for nested path should use forward slashes")
+	}
+
+	// Verify there are no Windows backslashes in the archive data section
+	// Find the archive data section and check for backslashes
+	archiveStart := strings.Index(outputStr, "window.mdviewArchive")
+	if archiveStart == -1 {
+		t.Fatal("Could not find archive data in output")
+	}
+	archiveSection := outputStr[archiveStart : archiveStart+2000] // Check first 2000 chars of archive
+	if strings.Contains(archiveSection, `roles\\engineering`) {
+		t.Error("Archive data contains Windows-style backslash paths, should be normalized to forward slashes")
 	}
 }
 

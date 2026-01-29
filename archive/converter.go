@@ -149,9 +149,10 @@ func (ac *ArchiveConverter) generateArchiveResources(archiveData map[string]stri
 		}
 		first = false
 
-		// Escape the path for JavaScript string literal
-		escapedPath := strings.ReplaceAll(relPath, "\\", "\\\\")
-		escapedPath = strings.ReplaceAll(escapedPath, "\"", "\\\"")
+		// Normalize path to forward slashes (must match how links are generated in converter)
+		normalizedPath := strings.ReplaceAll(relPath, "\\", "/")
+		// Escape for JavaScript string literal
+		escapedPath := strings.ReplaceAll(normalizedPath, "\"", "\\\"")
 
 		sb.WriteString(fmt.Sprintf("    \"%s\": \"%s\"", escapedPath, encodedData))
 	}
